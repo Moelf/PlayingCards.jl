@@ -55,7 +55,6 @@ end
     deck = ordered_deck()
     @test length(deck) == 52
     @test iterate(deck) == iterate(deck.cards)
-    shuffle!(deck)
     cards = pop!(deck, 2)
     @test length(cards)==2
     @test length(deck)==50
@@ -67,4 +66,24 @@ A♡ 2♡ 3♡ 4♡ 5♡ 6♡ 7♡ 8♡ 9♡ T♡ J♡ Q♡ K♡
 A♢ 2♢ 3♢ 4♢ 5♢ 6♢ 7♢ 8♢ 9♢ T♢ J♢ Q♢ K♢
 "
     @test sprint(show, ordered_deck()) == s
+end
+
+@testset "Shuffle" begin
+    deck = ordered_deck()
+    deck_0 = ordered_deck()
+    shuffle!(deck)
+    @test !all(deck_0 .== deck)
+    sort!(deck)
+    @test all(deck_0 .== deck)
+end
+
+@testset "Cut / Riffle" begin
+    deck = ordered_deck()
+    cut!(deck, 13)
+    cut!(deck, 39)
+    @test deck.cards == full_deck()
+
+    riffle!(deck)
+    sort!(deck)
+    @test deck.cards == full_deck()
 end
