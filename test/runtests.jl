@@ -2,13 +2,6 @@ using Test
 using PlayingCards
 using PlayingCards: rank_string
 
-@testset "Suit" begin
-    @test ♣ == Club()
-    @test ♠ == Spade()
-    @test ♡ == Heart()
-    @test ♢ == Diamond()
-end
-
 @testset "Ranks" begin
     for v in ranks()
         v==1 && continue
@@ -30,9 +23,9 @@ end
 
 @testset "Card" begin
     @test rank(J♣) == 11
-    @test suit(J♣) == Club()
-    @test_throws AssertionError 14*♣
-    @test_throws AssertionError 0*♣
+    @test suit(J♣) == ♣
+    @test_throws ArgumentError 14*♣
+    @test_throws ArgumentError 0*♣
 end
 
 @testset "strings" begin
@@ -48,7 +41,7 @@ end
     @test string(♠) == "♠"
     @test string(♡) == "♡"
     @test string(♢) == "♢"
-    @test_throws ErrorException rank_string(UInt8(0))
+    @test_throws ErrorException rank_string(Int8(-1))
 end
 
 @testset "Deck" begin

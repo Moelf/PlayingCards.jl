@@ -6,14 +6,13 @@ import Random: shuffle!
 import Base
 
 # Suits
-export Club, Spade, Heart, Diamond
 export ♣, ♠, ♡, ♢ # aliases
 
 # Card, and Suit
 export Card, Suit
 
 # Card properties
-export suit, rank, rank_type, high_value, low_value, color
+export suit, rank, high_value, low_value, color
 
 # Lists of all ranks / suits
 export ranks, suits
@@ -26,57 +25,76 @@ export Deck, shuffle!, full_deck, ordered_deck
 #####
 
 """
-    Suit
-
-Subtypes are used for each
-card suit (all of which have aliases):
- - `Club`    (alias `♣`)
- - `Spade`   (alias `♠`)
- - `Heart`   (alias `♡`)
- - `Diamond` (alias `♢`)
+Encode a suit as a 2-bit value (low bits of a `UInt8`):
+- 0 = ♣ (clubs)
+- 1 = ♢ (diamonds)
+- 2 = ♡ (hearts)
+- 3 = ♠ (spades)
+The suits have global constant bindings: `♣`, `♢`, `♡`, `♠`.
 """
-abstract type Suit end
-
-struct Club <: Suit end
-struct Spade <: Suit end
-struct Heart <: Suit end
-struct Diamond <: Suit end
-
-const ♣ = Club()
-const ♠ = Spade()
-const ♡ = Heart()
-const ♢ = Diamond()
-
-"""
-    Card{S <: Suit, R <: Rank}
-
-A playing card. Can be constructed with
-
-`Card(suit, rank)`, or by convenience
-constructors. For example:
- - `2♢` (equivalent to `Card(2, Diamond())`)
- - `A♡` (equivalent to `Card(1, Heart())`)
-
-A `10`-`suit` can be constructed with one of two constructors:
- - `10♣` (equivalent to `Card(10, Club())`)
-or
- - `T♠`  (equivalent to `Card(10, Spade())`)
-"""
-struct Card{S <: Suit}
-    rank::UInt8
-    # Support either order input:
-    function Card(rank::Int, ::S) where {S<:Suit}
-        @assert 1 ≤ rank ≤ 13
-        new{S}(UInt8(rank))
-    end
-    function Card(::S, rank::Int) where {S<:Suit}
-        @assert 1 ≤ rank ≤ 13
-        new{S}(UInt8(rank))
-    end
+struct Suit
+    i::UInt8
+    Suit(s::Integer) = 0 ≤ s ≤ 3 ? new(s) :
+        throw(ArgumentError("invalid suit number: $s"))
 end
 
+char(s::Suit) = Char(0x2663-s.i)
+Base.string(s::Suit) = string(char(s))
+Base.show(io::IO, s::Suit) = print(io, char(s))
+
+"""
+Encode a playing card as a 6-bit integer (low bits of a `UInt8`):
+- low bits represent rank from 0 to 15
+- high bits represent suit (♣, ♢, ♡ or ♠)
+Ranks are assigned as follows:
+- numbered cards (2 to 10) have rank equal to their number
+- jacks, queens and kings have ranks 11, 12 and 13
+- there are low and high aces with ranks 1 and 14
+- there are low and high jokers with ranks 0 and 15
+This allows any of the standard orderings of cards ranks to be
+achieved simply by choosing which aces or which jokers to use.
+There are a total of 64 possible card values with this scheme,
+represented by `UInt8` values `0x00` through `0x3f`.
+"""
+struct Card
+    value::UInt8
+end
+
+function Card(r::Integer, s::Integer)
+    1 ≤ r ≤ 13 || throw(ArgumentError("invalid card rank: $r"))
+    return Card(((s << 4) % UInt8) | (r % UInt8))
+end
+Card(r::Integer, s::Suit) = Card(r, s.i)
+
+suit(c::Card) = Suit((0x30 & c.value) >>> 4)
+rank(c::Card) = (c.value & 0x0f) % Int8
+
+const ♣ = Suit(0)
+const ♢ = Suit(1)
+const ♡ = Suit(2)
+const ♠ = Suit(3)
+
+bit(c::Card) = one(UInt64) << c.value
+bits(s::Suit) = UInt64(0xffff) << 16(s.i)
+
 # Allow constructing cards with, e.g., `3♡`
-Base.:*(r::Integer, s::Suit) = Card(s, r)
+Base.:*(r::Integer, s::Suit) = Card(r, s)
+
+function Base.show(io::IO, c::Card)
+    r = rank(c)
+    if 1 ≤ r ≤ 14
+        if r == 10
+            print(io, 'T')
+        elseif r == 1
+            print(io, 'A')
+        else
+            print(io, "1234567890JQKA"[r])
+        end
+    else
+        print(io, '\U1f0cf')
+    end
+    print(io, suit(c))
+end
 
 # And for face cards:
 # Not to be confused with
@@ -95,16 +113,7 @@ end
 ##### Methods
 #####
 
-Base.string(::Club) = "♣"
-Base.string(::Spade) = "♠"
-Base.string(::Heart) = "♡"
-Base.string(::Diamond) = "♢"
-Base.string(::Type{Club}) = "♣"
-Base.string(::Type{Spade}) = "♠"
-Base.string(::Type{Heart}) = "♡"
-Base.string(::Type{Diamond}) = "♢"
-
-function rank_string(r::UInt8)
+function rank_string(r::Int8)
     2 ≤ r ≤ 9 && return "$(r)"
     r == 10 && return "T"
     r == 11 && return "J"
@@ -114,10 +123,7 @@ function rank_string(r::UInt8)
     error("Unrecognized rank string")
 end
 
-suit_type(card::Card{S}) where {S} = string(S)
-Base.string(card::Card) = rank_string(card.rank)*string(suit_type(card))
-
-Base.show(io::IO, card::Card) = print(io, string(card))
+Base.string(card::Card) = rank_string(rank(card))*string(suit(card))
 
 # TODO: define Base.isless ? Problem: high Ace vs. low Ace
 
@@ -129,7 +135,7 @@ The high rank value. For example:
  - `Rank(1)` -> 14 (use [`low_value`](@ref) for the low Ace value.)
  - `Rank(5)` -> 5
 """
-high_value(c::Card) = c.rank == 1 ? 14 : c.rank
+high_value(c::Card) = rank(c) == 1 ? 14 : rank(c)
 
 """
     low_value(::Card)
@@ -139,35 +145,24 @@ The low rank value. For example:
  - `Rank(1)` -> 1 (use [`high_value`](@ref) for the high Ace value.)
  - `Rank(5)` -> 5
 """
-low_value(c::Card) = c.rank
-
-"""
-    rank(::Card)
-
-The card `rank` (e.g., `Ace`, `Rank`).
-"""
-rank(c::Card) = c.rank
-
-"""
-    suit(::Card)
-
-The card `suit` (e.g., `Heart`, `Club`).
-"""
-suit(c::Card{S}) where {S} = S()
+low_value(c::Card) = rank(c)
 
 """
     color(::Card)
-    color(::Suit)
 
 A `Symbol` (`:red`, or `:black`) indicating
 the color of the suit or card.
 """
-color(::Type{Club}) = :black
-color(::Type{Spade}) = :black
-color(::Type{Heart}) = :red
-color(::Type{Diamond}) = :red
-color(suit::Suit) = color(typeof(suit))
-color(card::Card{S}) where {S} = color(S)
+function color(s::Suit)
+    if s == ♣ || s == ♠
+        return :black
+    elseif s == ♡ || s == ♢
+        return :red
+    else
+        error("Card doesn't have color")
+    end
+end
+color(card::Card) = color(suit(card))
 
 #####
 ##### Full deck/suit/rank methods
